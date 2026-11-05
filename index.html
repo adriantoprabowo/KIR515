@@ -1,94 +1,350 @@
 <!doctype html>
-<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kartu Inventaris Ruangan</title>
-<style>
-*{box-sizing:border-box}body{margin:0;background:#f3f5f8;color:#202938;font:14px Arial,sans-serif}header{background:#17365d;color:white;padding:16px max(18px,calc((100% - 1150px)/2));display:flex;justify-content:space-between}header a{color:white;text-decoration:none}main{max-width:1150px;margin:28px auto;padding:0 18px;min-height:75vh}.heading,.toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}h1{font-size:26px;margin:0 0 5px}.muted{color:#667085}button,.btn,input{font:inherit}button,.btn{padding:10px 14px;border:1px solid #17365d;border-radius:7px;background:#17365d;color:white;cursor:pointer;text-decoration:none;display:inline-block}.secondary{background:white;color:#17365d}input{padding:10px;border:1px solid #d5dbe5;border-radius:7px;min-width:min(300px,100%)}.paper,.card,.status{background:white;border:1px solid #d5dbe5;border-radius:8px}.paper{padding:25px;overflow:hidden}.dochead{text-align:center;font-weight:bold;margin-bottom:22px}.dochead p{font-size:12px;margin:3px}.dochead h2{font-size:19px;margin-top:16px}.identity{margin-bottom:24px}.identity div{display:grid;grid-template-columns:130px 12px 1fr;margin:3px 0}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #555;padding:7px 8px}th{text-align:center;background:#f0f2f5}.foot{display:flex;justify-content:space-between;margin-top:12px;color:#667085;font-size:11px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:15px}.card{padding:17px;text-align:center;display:flex;align-items:center;flex-direction:column;gap:10px}.card h3{margin:0;font-size:15px}.qr{min-height:160px;display:grid;place-items:center}.url{font-size:10px;color:#667085;overflow-wrap:anywhere}.status{padding:14px;margin:12px 0}.error{color:#9b1c1c;background:#fff4f4;border-color:#e7baba}.hidden{display:none!important}footer{text-align:center;padding:18px;color:#667085;font-size:11px}@media(max-width:650px){.heading,.toolbar{align-items:flex-start;flex-direction:column}.paper{padding:13px}.identity div{grid-template-columns:105px 10px 1fr;font-size:12px}}@media print{@page{size:A4 landscape;margin:12mm}body{background:white}header,footer,.no-print{display:none!important}main{margin:0;padding:0}.paper{border:0;padding:0}.tablewrap{overflow:visible}table{font-size:9px}th,td{padding:5px}}
-</style></head><body>
-<header><strong>KIR DIGITAL</strong><a href="?mode=qr">Generator QR</a></header><main>
-<div id="status" class="status">Mengambil data dari Google Spreadsheet...</div>
-<section id="generator" class="hidden"><div class="heading"><div><h1>Generator QR Ruangan</h1><span class="muted">QR dibuat otomatis dari kolom T.</span></div><button id="reload" class="secondary">Muat ulang</button></div><div class="toolbar"><input id="search" placeholder="Cari ruangan..."><span id="count" class="muted"></span></div><div id="qr-list" class="grid"></div></section>
-<section id="kir" class="hidden"><div class="heading no-print"><div><h1>Kartu Inventaris Ruangan</h1><span class="muted">Data langsung dari sheet DATA.</span></div><div><a class="btn secondary" href="?mode=qr">Generator QR</a> <button id="print">Cetak / Simpan PDF</button></div></div><article class="paper"><div class="dochead"><p>PEMERINTAH PROVINSI DAERAH KHUSUS IBUKOTA JAKARTA</p><p>SATUAN POLISI PAMONG PRAJA</p><h2>KARTU INVENTARIS RUANGAN</h2></div><div id="identity" class="identity"></div><div class="tablewrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div><div class="foot"><span id="total"></span><span id="time"></span></div></article></section>
-</main><footer>KIR Digital · Google Spreadsheet</footer>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>
-(()=>{
-const ID="1hwsAgFfpsjHgiX23BMQ_9yW6m3HRxZNCCvQeHL-D_wc";
-const GID="1036653903"; // GID dari link; pastikan ini tab DATA.
-const HEAD=["NO","KODE BARANG","REG","JENIS BARANG","UKURAN","TGL OLEH","BAHAN","MERK","HARGA (RP)"];
-const room=new URLSearchParams(location.search).get("ruangan");
-const $=x=>document.getElementById(x);let data=[];
-function csvParse(s){let out=[],r=[],v="",q=false;for(let i=0;i<s.length;i++){let c=s[i],n=s[i+1];if(q){if(c=='"'&&n=='"'){v+='"';i++}else if(c=='"')q=false;else v+=c}else if(c=='"')q=true;else if(c==','){r.push(v);v=''}else if(c=='\n'){r.push(v);out.push(r);r=[];v=''}else if(c!=='\r')v+=c}if(v||r.length){r.push(v);out.push(r)}return out.filter(x=>x.some(y=>String(y).trim()))}
-async function fetchData() {
-  return new Promise((resolve, reject) => {
-    const callback = "__kirCallback_" + Date.now();
-    const script = document.createElement("script");
-
-    const url = new URL(
-      `https://docs.google.com/spreadsheets/d/${ID}/gviz/tq`
-    );
-
-    url.searchParams.set("gid", GID);
-    url.searchParams.set("range", "A4:U");
-    url.searchParams.set("headers", "1");
-    url.searchParams.set(
-      "tq",
-      "SELECT B,C,D,E,G,H,I,J,P,T WHERE T IS NOT NULL"
-    );
-    url.searchParams.set(
-      "tqx",
-      "out:json;responseHandler:" + callback
-    );
-
-    let finished = false;
-
-    function cleanup() {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-      delete window[callback];
-      script.remove();
-    }
-
-    window[callback] = response => {
-      cleanup();
-
-      if (!response || response.status !== "ok") {
-        reject(new Error(
-          response?.errors?.map(e =>
-            e.detailed_message || e.message
-          ).join("; ") || "Google gagal mengirim data."
-        ));
-        return;
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Kartu Inventaris Ruangan</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #f3f5f8; color: #202938; font: 14px Arial, sans-serif; }
+      header { background: #17365d; color: white; padding: 16px max(18px, calc((100% - 1150px) / 2)); display: flex; justify-content: space-between; }
+      header a { color: white; text-decoration: none; }
+      main { max-width: 1150px; margin: 28px auto; padding: 0 18px; min-height: 75vh; }
+      .heading, .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
+      h1 { font-size: 26px; margin: 0 0 5px; }
+      .muted { color: #667085; }
+      button, .btn, input { font: inherit; }
+      button, .btn { padding: 10px 14px; border: 1px solid #17365d; border-radius: 7px; background: #17365d; color: white; cursor: pointer; text-decoration: none; display: inline-block; }
+      .secondary { background: white; color: #17365d; }
+      input { padding: 10px; border: 1px solid #d5dbe5; border-radius: 7px; min-width: min(300px, 100%); }
+      .paper, .card, .status { background: white; border: 1px solid #d5dbe5; border-radius: 8px; }
+      .paper { padding: 25px; overflow: hidden; }
+      .dochead { text-align: center; font-weight: bold; margin-bottom: 22px; }
+      .dochead p { font-size: 12px; margin: 3px; }
+      .dochead h2 { font-size: 19px; margin-top: 16px; }
+      .identity { margin-bottom: 24px; }
+      .identity div { display: grid; grid-template-columns: 130px 12px 1fr; margin: 3px 0; }
+      .tablewrap { overflow: auto; }
+      table { border-collapse: collapse; width: 100%; font-size: 12px; }
+      th, td { border: 1px solid #555; padding: 7px 8px; }
+      th { text-align: center; background: #f0f2f5; }
+      .foot { display: flex; justify-content: space-between; margin-top: 25px; color: #667085; font-size: 11px; }
+      
+      /* Format Tanda Tangan */
+      .signatures {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 50px;
+        page-break-inside: avoid;
+         /* Mencegah tanda tangan terpotong ke halaman baru */
+      }
+      .sig-block {
+        text-align: center;
+        width: 320px;
+        font-size: 14px;
+      }
+      .sig-block p {
+        margin: 4px 0;
+      }
+      .sig-img {
+        height: 110px; /* Ukuran bisa disesuaikan */
+        object-fit: contain;
+        margin: -10px 0;
+        position: relative;
+        mix-blend-mode: multiply; /* Menghilangkan background putih pada gambar agar transparan/menyatu dengan kertas */
+        /* z-index: -1; DIHAPUS KARENA MEMBUAT GAMBAR TENGGELAM DI BALIK KERTAS */
+      }
+      .sig-name {
+        font-weight: bold;
+        text-decoration: underline;
+        margin-top: 5px !important;
       }
 
-      const rows = response.table.rows.map(row =>
-        row.c.map(cell => cell ? (cell.f ?? cell.v ?? "") : "")
-      );
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 15px; }
+      .card { padding: 17px; text-align: center; display: flex; align-items: center; flex-direction: column; gap: 10px; }
+      .card h3 { margin: 0; font-size: 15px; }
+      .qr { min-height: 160px; display: grid; place-items: center; }
+      .url { font-size: 10px; color: #667085; overflow-wrap: anywhere; }
+      .status { padding: 14px; margin: 12px 0; }
+      .error { color: #9b1c1c; background: #fff4f4; border-color: #e7baba; }
+      .hidden { display: none !important; }
+      footer { text-align: center; padding: 18px; color: #667085; font-size: 11px; }
+      
+      @media (max-width: 650px) {
+        .heading, .toolbar { align-items: flex-start; flex-direction: column; }
+        .paper { padding: 13px; }
+        .identity div { grid-template-columns: 105px 10px 1fr; font-size: 12px; }
+        .signatures { flex-direction: column; align-items: center; gap: 40px; }
+      }
+      
+      @media print {
+        @page { 
+          size: A4 landscape; 
+          margin: 0 15mm; /* Gunakan margin asli kertas agar batas atas dan bawah presisi */
+        }
+        body { 
+          background: white; 
+          padding: 0; /* Hapus padding yang membuat halaman mepet/terpotong */
+        }
+        header, footer, .no-print { display: none !important; }
+        main { margin: 0; padding: 0; }
+        .paper { border: 0; padding: 0; }
+        .tablewrap { overflow: visible; }
+        table { font-size: 10px; }
+        th, td { padding: 5px; }
+        .signatures { margin-top: 30px; font-size: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>KIR DIGITAL SATPOL PP KOTA ADMINISTRASI JAKARTA PUSAT</strong><a href="?mode=qr">Generator QR</a>
+    </header>
+    <main>
+      <div id="status" class="status">Mengambil data dari Google Spreadsheet...</div>
+      <section id="generator" class="hidden">
+        <div class="heading">
+          <div>
+            <h1>Generator QR Ruangan</h1>
+          </div>
+          <button id="reload" class="secondary">Muat ulang</button>
+        </div>
+        <div class="toolbar">
+          <input id="search" placeholder="Cari ruangan..." /><span id="count" class="muted"></span>
+        </div>
+        <div id="qr-list" class="grid"></div>
+      </section>
+      <section id="kir" class="hidden">
+        <div class="heading no-print">
+          <div>
+            <button id="print">Cetak / Simpan PDF</button>
+          </div>
+        </div>
+        <article class="paper">
+          <div class="dochead">
+            <h2>KARTU INVENTARIS RUANGAN</h2>
+          </div>
+          <div id="identity" class="identity"></div>
+          <div class="tablewrap">
+            <table>
+              <thead id="thead"></thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          
+          <!-- BAGIAN TANDA TANGAN -->
+          <div class="signatures">
+            <div class="sig-block">
+              <br><p>Mengetahui,</p>
+              <p>Kepala Satuan Polisi Pamong Praja<br>Kota Administrasi Jakarta Pusat</p>
+              <img src="ttd stempel kasat.png" class="sig-img" alt="TTD Kasat">
+              <p class="sig-name">Purnama Hasudungan</p>
+              <p>NIP 197110041995031002</p>
+            </div>
+            <div class="sig-block">
+              <p id="sig-date">Jakarta, ...</p>
+              <p>Pengurus Barang Pembantu<br>Satuan Polisi Pamong Praja<br>Kota Administrasi Jakarta Pusat</p>
+              <img src="ttd herman.png" class="sig-img" alt="TTD Herman">
+              <p class="sig-name">Suherman</p>
+              <p>NIP 197607102008011032</p>
+            </div>
+          </div>
 
-      resolve(rows);
-    };
+          <div class="foot">
+            <span id="total"></span><span id="time"></span>
+          </div>
+        </article>
+      </section>
+    </main>
+    <footer>KIR Digital · Google Spreadsheet</footer>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script>
+      (() => {
+        const ID = "1hwsAgFfpsjHgiX23BMQ_9yW6m3HRxZNCCvQeHL-D_wc";
+        const GID = "1036653903";
+        const HEAD = ["NO", "KODE BARANG", "REGISTER", "JENIS BARANG", "SATUAN", "TGL OLEH", "BAHAN", "MERK", "TIPE", "NO PLAT", "HARGA"];
+        const room = new URLSearchParams(location.search).get("ruangan");
+        const $ = (x) => document.getElementById(x);
+        let data = [];
+        
+        async function fetchData() {
+          return new Promise((resolve, reject) => {
+            const callback = "__kirCallback_" + Date.now();
+            const script = document.createElement("script");
+            const url = new URL(`https://docs.google.com/spreadsheets/d/${ID}/gviz/tq`);
+            url.searchParams.set("gid", GID);
+            url.searchParams.set("range", "A4:U");
+            url.searchParams.set("headers", "1");
+            url.searchParams.set("tq", "SELECT B,C,D,F,G,H,I,J,N,P,T WHERE T IS NOT NULL");
+            url.searchParams.set("tqx", "out:json;responseHandler:" + callback);
+            
+            let finished = false;
+            function cleanup() {
+              if (finished) return;
+              finished = true;
+              clearTimeout(timer);
+              delete window[callback];
+              script.remove();
+            }
+            
+            window[callback] = (response) => {
+              cleanup();
+              if (!response || response.status !== "ok") {
+                reject(new Error(response?.errors?.map((e) => e.detailed_message || e.message).join("; ") || "Google gagal mengirim data."));
+                return;
+              }
+              const rows = response.table.rows.map((row) =>
+                row.c.map((cell) => (cell ? (cell.f ?? cell.v ?? "") : "")),
+              );
+              resolve(rows);
+            };
+            
+            script.onerror = () => { cleanup(); reject(new Error("Gagal mengakses Google Visualization API.")); };
+            const timer = setTimeout(() => { cleanup(); reject(new Error("Koneksi timeout.")); }, 20000);
+            script.src = url.toString();
+            document.head.appendChild(script);
+          });
+        }
+        
+        function identity(r) {
+          let a = [
+            ["Provinsi", "Daerah Khusus Ibukota Jakarta"],
+            ["Kab/Kota", "Kota Administrasi Jakarta Pusat"],
+            ["Satuan Kerja", "Satuan Polisi Pamong Praja"],
+            ["Unit", "Satuan Polisi Pamong Praja Kota Administrasi Jakarta Pusat"],
+            ["Lokasi", r],
+          ];
+          $("identity").replaceChildren();
+          a.forEach((x) => {
+            let d = document.createElement("div");
+            x.forEach((v, i) => {
+              let s = document.createElement("span");
+              s.textContent = v;
+              d.append(s);
+              if (i === 0) d.append(document.createTextNode(" : "));
+            });
+            $("identity").append(d);
+          });
+        }
+        
+        function showKIR(r) {
+          let rows = data.filter((x) => String(x[10]).trim() === r);
+          $("generator").classList.add("hidden");
+          $("kir").classList.remove("hidden");
+          identity(r);
+          
+          let h = document.createElement("tr");
+          HEAD.forEach((x) => {
+            let th = document.createElement("th");
+            th.textContent = x;
+            h.append(th);
+          });
+          $("thead").replaceChildren(h);
+          $("tbody").replaceChildren();
+          
+          rows.forEach((x, index) => {
+            let tr = document.createElement("tr");
+            let tdNo = document.createElement("td");
+            tdNo.textContent = index + 1;
+            tdNo.style.textAlign = "center";
+            tr.append(tdNo);
+            
+            x.slice(0, 10).forEach((v) => {
+              let td = document.createElement("td");
+              td.textContent = v;
+              tr.append(td);
+            });
+            $("tbody").append(tr);
+          });
+          
+          $("total").textContent = rows.length ? `Total barang: ${rows.length} unit` : "Ruangan tidak ditemukan.";
+          $("time").textContent = "Diakses: " + new Date().toLocaleString("id-ID");
+          
+          // SET TANGGAL OTOMATIS (Akhir Tahun dari Tahun Sekarang)
+          const currentYear = new Date().getFullYear();
+          $("sig-date").textContent = "Jakarta, 31 Desember " + currentYear;
 
-    script.onerror = () => {
-      cleanup();
-      reject(new Error(
-        "Gagal mengakses Google Visualization API. Periksa akses spreadsheet dan GID."
-      ));
-    };
-
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("Koneksi ke Google mengalami timeout."));
-    }, 20000);
-
-    script.src = url.toString();
-    document.head.appendChild(script);
-  });
-}
-
-function identity(r){let a=[["Provinsi","Daerah Khusus Ibukota Jakarta"],["Kab/Kota","Kota Administrasi Jakarta Pusat"],["Satuan Kerja","Satuan Polisi Pamong Praja"],["Unit","Satuan Polisi Pamong Praja Kota Administrasi Jakarta Pusat"],["Lokasi",r]];$("identity").replaceChildren();a.forEach(x=>{let d=document.createElement("div");x.forEach((v,i)=>{let s=document.createElement("span");s.textContent=v;d.append(s);if(i===0)d.append(document.createTextNode(" : "))});$("identity").append(d)})}
-function showKIR(r){let rows=data.filter(x=>String(x[9]).trim()===r);$("generator").classList.add("hidden");$("kir").classList.remove("hidden");identity(r);let h=document.createElement("tr");HEAD.forEach(x=>{let th=document.createElement("th");th.textContent=x;h.append(th)});$("thead").replaceChildren(h);$("tbody").replaceChildren();rows.forEach(x=>{let tr=document.createElement("tr");x.slice(0,9).forEach(v=>{let td=document.createElement("td");td.textContent=v;tr.append(td)});$("tbody").append(tr)});$("total").textContent=rows.length?`Total barang: ${rows.length} unit`:"Ruangan tidak ditemukan atau belum memiliki barang."; $("time").textContent="Diakses: "+new Date().toLocaleString("id-ID");document.title="KIR - "+r}
-function qrCard(r){let c=document.createElement("article");c.className="card";let h=document.createElement("h3");h.textContent=r;let q=document.createElement("div");q.className="qr";let u=new URL(location.href);u.search="";u.searchParams.set("ruangan",r);let link=document.createElement("div");link.className="url";link.textContent=u.href;let b=document.createElement("button");b.className="secondary";b.textContent="Salin tautan";b.onclick=async()=>{try{await navigator.clipboard.writeText(u.href);b.textContent="Tersalin";setTimeout(()=>b.textContent="Salin tautan",1400)}catch(e){link.textContent=u.href}};c.append(h,q,link,b);new QRCode(q,{text:u.href,width:160,height:160,correctLevel:QRCode.CorrectLevel.M});return c}
-function showQR(){ $("kir").classList.add("hidden");$("generator").classList.remove("hidden");let rooms=[...new Set(data.map(x=>String(x[9]).trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"id"));let s=$("search").value.toLowerCase();let list=rooms.filter(x=>x.toLowerCase().includes(s));$("count").textContent=rooms.length+" ruangan";$("qr-list").replaceChildren();list.forEach(r=>$("qr-list").append(qrCard(r)));if(!list.length)$("qr-list").textContent="Ruangan tidak ditemukan."}
-async function load(){ $("status").classList.remove("error");$("status").textContent="Mengambil data...";try{data=await fetchData();$("status").classList.add("hidden");if(room)showKIR(room);else showQR()}catch(e){$("status").textContent=e.message+" Atur akses spreadsheet menjadi dapat dilihat publik."; $("status").classList.add("error")}}
-$("reload").onclick=load;$("search").oninput=showQR;$("print").onclick=()=>print();load();setInterval(load,300000);
-})();
-</script></body></html>
+          document.title = "KIR - " + r;
+        }
+        
+        function qrCard(r) {
+          let c = document.createElement("article");
+          c.className = "card";
+          
+          let h = document.createElement("h3");
+          h.textContent = r;
+          
+          let q = document.createElement("div");
+          q.className = "qr";
+          
+          let u = new URL(location.href);
+          u.search = "";
+          u.searchParams.set("ruangan", r);
+          
+          let link = document.createElement("div");
+          link.className = "url";
+          link.textContent = u.href;
+          
+          // Tombol Copy
+          let b = document.createElement("button");
+          b.className = "secondary";
+          b.textContent = "Salin";
+          b.onclick = async () => {
+            try { await navigator.clipboard.writeText(u.href); b.textContent = "Tersalin"; setTimeout(() => (b.textContent = "Salin"), 1400); }
+            catch (e) { link.textContent = u.href; }
+          };
+          
+          // Tombol Buka Tab Baru
+          let openBtn = document.createElement("a");
+          openBtn.className = "btn secondary";
+          openBtn.textContent = "Buka";
+          openBtn.href = u.href;
+          openBtn.target = "_blank"; // Atribut penting agar buka di tab baru
+          
+          // Bungkus kedua tombol agar sejajar
+          let btnGroup = document.createElement("div");
+          btnGroup.style.display = "flex";
+          btnGroup.style.gap = "8px";
+          btnGroup.append(b, openBtn);
+          
+          c.append(h, q, link, btnGroup);
+          new QRCode(q, { text: u.href, width: 160, height: 160, correctLevel: QRCode.CorrectLevel.M });
+          return c;
+        }
+        
+        function showQR() {
+          $("kir").classList.add("hidden");
+          $("generator").classList.remove("hidden");
+          let rooms = [...new Set(data.map((x) => String(x[10]).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id"));
+          let s = $("search").value.toLowerCase();
+          let list = rooms.filter((x) => x.toLowerCase().includes(s));
+          $("count").textContent = rooms.length + " ruangan";
+          $("qr-list").replaceChildren();
+          list.forEach((r) => $("qr-list").append(qrCard(r)));
+          if (!list.length) $("qr-list").textContent = "Ruangan tidak ditemukan.";
+        }
+        
+        async function load() {
+          $("status").classList.remove("error");
+          $("status").textContent = "Mengambil data...";
+          try {
+            data = await fetchData();
+            $("status").classList.add("hidden");
+            if (room) showKIR(room);
+            else showQR();
+          } catch (e) {
+            $("status").textContent = e.message + " Atur akses spreadsheet menjadi dapat dilihat publik.";
+            $("status").classList.add("error");
+          }
+        }
+        
+        $("reload").onclick = load;
+        $("search").oninput = showQR;
+        $("print").onclick = () => window.print();
+        
+        load();
+        setInterval(load, 300000);
+      })();
+    </script>
+  </body>
+</html>
